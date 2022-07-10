@@ -1,4 +1,10 @@
 const { Cluster } = require('puppeteer-cluster');
+const { program } = require('commander');
+
+program
+  .option('-t, --target <url>');
+program.parse();
+const { target } = program.opts();
 
 let visitedUrls = [];
 
@@ -35,7 +41,7 @@ let visitedUrls = [];
 		urls.forEach(({ url, name }, i) => cluster.queue({ url }, getUrls));
     };
 
-	cluster.queue({ url: 'https://example.org'}, deepCrawl);
+	cluster.queue({ url: target }, deepCrawl);
 
 	await cluster.idle();
 	await cluster.close();
