@@ -11,7 +11,7 @@ let visitedUrls = [];
 (async () => {
 	const cluster = await Cluster.launch({
 		concurrency: Cluster.CONCURRENCY_PAGE,
-		maxConcurrency: 2,
+		maxConcurrency: 5,
 		puppeteerOptions: {
 			headless: false
 		}
@@ -19,9 +19,29 @@ let visitedUrls = [];
 
 	const getUrls = async ({page, data}) => {
 		const { url } = data;
-		await page.goto(url, { waitUntil: 'domcontentloaded' });
-		
+				
 		console.log(`Extracting URLs from "${url}"...`);
+
+		await page.setRequestInterception(true);
+		page.on('request', (request) => {
+			const allowlist = ['document', 'script', 'xhr', 'fetch'];
+			if (!allowlist.includes(request.resourceType())) {
+				return request.abort();
+			}
+			request.continue();
+		})
+
+		page.on('response', async (response) => {
+			let resourceType = response.request().resourceType();
+			let responseUrl = response.url();
+
+			if (responseType == "document") {
+				urls.push(responseUrl);
+			}
+		})
+
+		await page.goto(url, { waitUntil: 'domcontentloaded' });
+
 		let urls = await page.evaluate(() => {
         	return [...document.querySelectorAll('a')]
                 .map(({ href }) => ({ url: href }));
@@ -38,7 +58,7 @@ let visitedUrls = [];
 		console.log(`Deep crawling "${url}"...`);
 
 		const urls = await cluster.execute({ url }, getUrls);
-		urls.forEach(({ url, name }, i) => cluster.queue({ url }, getUrls));
+		urls.forEach(({ url }, i) => cluster.queue({ url }, getUrls));
     };
 
 	cluster.queue({ url: target }, deepCrawl);
