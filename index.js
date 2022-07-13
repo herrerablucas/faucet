@@ -3,12 +3,30 @@ const { program } = require('commander');
 
 program
   .option('-t, --target <url>')
-  .option('-i, --identifiers [identifiers...]');
+  .option('-i, --identifiers [identifiers...]')
+  .option('-c, --credentials [credentials...]');
 
 program.parse();
-const { target, identifiers } = program.opts();
+const { target, identifiers, credentials } = program.opts();
 
 let visitedUrls = [];
+
+const authInteractions = [
+	{
+		selector: '#content > div:nth-child(1) > form > table > tbody > tr:nth-child(1) > td:nth-child(2) > input[type=text]',
+		action: 'type',
+		input: credentials[0],
+	},
+	{
+		selector: '#content > div:nth-child(1) > form > table > tbody > tr:nth-child(2) > td:nth-child(2) > input[type=password]',
+		action: 'type',
+		input: credentials[1],
+	},
+	{
+		selector: '#content > div:nth-child(1) > form > table > tbody > tr:nth-child(3) > td > input[type=submit]',
+		action: 'click',
+	},
+];
 
 (async () => {
 	const cluster = await Cluster.launch({
@@ -81,8 +99,29 @@ let visitedUrls = [];
 		console.log({status: response.status(), ...xsleaks});
 	}
 
-	cluster.queue({ url: target }, deepCrawl);
+	const authenticate = async ({ page, data }) => {
+		const { url } = data;
 
+		await page.goto(url);
+		let typed = authInteractions.filter((interaction) =>
+			interaction.action == "type" 
+		);
+
+		for await (const { selector, input } of typed) {
+			await page.type(selector, input);
+		}
+
+		await Promise.all([
+			...(authInteractions.filter((interaction) => interaction.action == 'click')).map(({selector}) => page.click(selector)),
+			page.waitForNavigation({ waitUntil: 'networkidle0' }),
+  		]);
+	};
+
+	if (credentials) {
+		await cluster.execute({ url: target }, authenticate);
+	}
+
+	cluster.queue({ url: target }, deepCrawl);
 	await cluster.idle();
 
 	let filteredUrls = [];
